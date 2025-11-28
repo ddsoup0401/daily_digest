@@ -67,6 +67,9 @@ class DependencyGraph:
             dependencies_met = True
 
             for dep in pred:
+                if dep not in self.tasks:
+                    dependencies_met = False
+                    break
                 dep_task = self.tasks[dep]
 
                 # case 1: dependency is done
@@ -74,9 +77,9 @@ class DependencyGraph:
                     continue
 
                 # case 2: milestone is reached
-                if dep_task.milestone: 
-                    milestone = dep_task.milestone 
-                    if dep_task.progress >= milestone.trigger_process:
+                if dep_task.milestone and len(dep_task.milestone) > 0: 
+                    milestone = dep_task.milestone[0] 
+                    if milestone.trigger_process and dep_task.progress >= milestone.trigger_process:
                         continue
                 
                 dependencies_met = False
@@ -113,13 +116,15 @@ class DependencyGraph:
         reset_tasks = []
 
         for desc in descendants:
+            if desc not in self.tasks:
+                continue
             task = self.tasks[desc]
 
-            if task.status == TaskStatus.DONE or task.status > 0.0: 
+            if task.status == TaskStatus.DONE or task.progress > 0.0: 
                 task.progress = 0.0
                 task.status = TaskStatus.PENDING
                 task.updated_at = datetime.now()
-                reset_tasks.append(task)
+                reset_tasks.append(task.id)
         
         if reset_tasks:
             self.save_file()

@@ -54,7 +54,7 @@ class Task(BaseModel):
     volatility: float = 0.0 # 0.0 means stable, 1.0 means very volatile
 
     # milestone specific variables
-    milestone: MileStone = Field(default_factory=MileStone, description="Milestone for the task")
+    milestone: List[MileStone] = Field(default_factory=list, description="Milestone for the task")
     
     # human factors - switching cost
     switch_cost: int = 0 # 0 = no penalty, 1 = low penalty, 2 = medium penalty, 3 = high penalty, 4 = very high penalty, 5 = extreme penalty

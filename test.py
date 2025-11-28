@@ -2,6 +2,7 @@ from models import Task, TeamType, TaskStatus, ProjectStage, TaskCategory
 from graph_manager import DependencyGraph
 from f1b_optimizer import Optimizer
 from datetime import datetime
+from typing import Tuple
 import time
 import sys
 
@@ -18,12 +19,46 @@ def get_input(prompt_text, default=None):
         return Prompt.ask(f"[bold cyan]{prompt_text}[/]", default=str(default))
     return Prompt.ask(f"[bold cyan]{prompt_text}[/]")
 
-def check_project_completion(graph: DependencyGraph) -> bool:
+def check_project_completion(graph: DependencyGraph) -> Tuple[bool, int, int]:
     if not graph.tasks:
         return False, 0, 0 
     total_tasks = len(graph.tasks)
-    done_tasks = sum(1 for t in graph.tasks.values() if t.status == TaskStatus.DONE)
-    return done_tasks == total_tasks, done_tasks, total_tasks 
+    done_sum = 0
+    for t in graph.tasks.values():
+        if t.status == TaskStatus.DONE:
+            done_sum += 1
+    return done_sum == total_tasks, done_sum, total_tasks 
+
+def check_readiness_details(graph: DependencyGraph, task: Task) -> str:
+    """
+    Check the readiness details of a task
+    """
+    # 1. if task is done or in progress
+    if task.status == TaskStatus.DONE: 
+        return "[dim]Done[/]"
+    if task.status == TaskStatus.IN_PROGRESS:
+        return "[bold green]In Progress (Active)[/]"
+    
+    #2. if task is pending, check if all dependencies are done
+    blockers = []
+    for dep in task.dependencies:
+        dep_task = graph.get_task(dep)
+        if not dep_task: 
+            continue
+        if dep_task.status == TaskStatus.DONE:
+            continue
+        # if status is not done, check if milestone is reached 
+        is_milestone_reached = False
+        if dep_task.milestone and len(dep_task.milestone) > 0:
+            milestone = dep_task.milestone[0]
+            if milestone.trigger_process and dep_task.progress >= milestone.trigger_process:
+                is_milestone_reached = True
+        if not is_milestone_reached:
+            current_status = f"{int(dep_task.progress * 100)}%"
+            blockers.append(f"{dep_task.id} ({current_status})")
+    if blockers:
+        return f"[red]waiting for : {', '.join(blockers)}[/]"
+    return "[bold green]Ready[/]"
 
 def display_project_status(graph: DependencyGraph, optimizer: Optimizer):
     """
@@ -44,7 +79,7 @@ def display_project_status(graph: DependencyGraph, optimizer: Optimizer):
     ))
 
     if is_completed:
-        print(Panel(Panel("All modules completed. 'add' to add new issue.", style="green")))
+        console.print(Panel("All modules completed. 'add' to add new issue.", style="green"))
         return 
 
     rec_text = optimizer.run_scheduler(current_time_step=1) 
@@ -61,6 +96,7 @@ def display_project_status(graph: DependencyGraph, optimizer: Optimizer):
     table.add_column("Risk", justify="right", style="red")
     table.add_column("Progress")
     table.add_column("Status")
+    table.add_column("Readiness", style="white")
 
     task_sorted_by_stage = sorted(graph.tasks.values(), key=lambda t: (t.status == TaskStatus.DONE, t.id))
 
@@ -77,7 +113,8 @@ def display_project_status(graph: DependencyGraph, optimizer: Optimizer):
         
         table.add_row(
             t.id, t.component_id, t.stage.value.split('.')[1].strip(), 
-            risk_str, prog_vis, f"[{status_color}]{t.status.name.upper()}[/]"
+            risk_str, prog_vis, f"[{status_color}]{t.status.name.upper()}[/]",
+            check_readiness_details(graph, t) 
         )
         
     console.print(table)
@@ -122,11 +159,20 @@ def main():
     graph = DependencyGraph()
     optimizer = Optimizer(graph)
     
-    # if not graph.tasks:
-    #     # Demo Data
-    #     graph.add_task(Task(id='HW-1', name='Leg CAD', team=TeamType.HARDWARE, assigner='Alice', component_id='Leg', stage=ProjectStage.ARCHITECTURE, expected_duration=4, status=TaskStatus.DONE, progress=1.0, volatility=0.1))
-    #     graph.add_task(Task(id='HW-2', name='Leg Fabrication', team=TeamType.HARDWARE, assigner='Alice', component_id='Leg', stage=ProjectStage.FABRICATION, expected_duration=8, dependencies=['HW-1'], status=TaskStatus.IN_PROGRESS, progress=0.6, volatility=0.1))
-    #     graph.add_task(Task(id='SW-1', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BASELINE, expected_duration=8, dependencies=['HW-1'], status=TaskStatus.IN_PROGRESS, progress=0.4, volatility=0.1))
+    if not graph.tasks:
+        # Demo Data
+        graph.add_task(Task(id='HW-1', name='Leg CAD', team=TeamType.HARDWARE, assigner='Alice', component_id='Leg', stage=ProjectStage.ARCHITECTURE, expected_duration=4, status=TaskStatus.DONE, progress=1.0, volatility=0.1))
+        graph.add_task(Task(id='HW-2', name='Leg Fabrication', team=TeamType.HARDWARE, assigner='Alice', component_id='Leg', stage=ProjectStage.FABRICATION, expected_duration=8, dependencies=['HW-1'], status=TaskStatus.IN_PROGRESS, progress=0.6, volatility=0.1))
+        graph.add_task(Task(id='SW-1', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BASELINE, expected_duration=8, dependencies=['HW-1'], status=TaskStatus.IN_PROGRESS, progress=0.4, volatility=0.5))
+        graph.add_task(Task(id='SW-2', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.TESTING, expected_duration=8, dependencies=['HW-1', 'HW-2'], status=TaskStatus.PENDING, progress=0.0, volatility=0.8))
+        graph.add_task(Task(id='SW-3', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BRINGUP, expected_duration=8, dependencies=['HW-1', 'HW-2'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-4', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.FABRICATION, expected_duration=8, dependencies=['HW-2'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-5', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BASELINE, expected_duration=8, dependencies=['HW-1', 'HW-2', 'SW-4'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-6', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.FABRICATION, expected_duration=8, dependencies=['HW-1', 'HW-2', 'SW-4', 'SW-5'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-7', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BASELINE, expected_duration=8, dependencies=['HW-1', 'HW-2', 'SW-4', 'SW-5'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-8', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.FABRICATION, expected_duration=8, dependencies=['HW-1', 'HW-2', 'SW-4', 'SW-6'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-9', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BASELINE, expected_duration=8, dependencies=['HW-1'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
+        graph.add_task(Task(id='SW-10', name='Leg Firmware', team=TeamType.SOFTWARE, assigner='Bob', component_id='Leg', stage=ProjectStage.BRINGUP, expected_duration=8, dependencies=['HW-1', 'HW-2'], status=TaskStatus.PENDING, progress=0.0, volatility=0.1))
 
     while True:
         display_project_status(graph, optimizer)
@@ -146,7 +192,7 @@ def main():
                     new_vol = FloatPrompt.ask("New Volatility (0.0~1.0)", default=task.volatility)
                     graph.update_task_volatility(tid, new_vol)
                     
-                    # CORE LOGIC: Cascading Reset Trigger
+                    # CORE LOGIC: Reset Trigger
                     if new_vol >= 0.8: # Threshold: 0.8 or higher is considered "Scrap"
                         rprint("[bold red] Warning: Volatility is very high (High Volatility).[/]")
                         rprint("[red]All downstream tasks dependent on this task should be scrapped.[/]")
@@ -157,6 +203,9 @@ def main():
                                 rprint(f"[bold yellow] The following tasks have been reset: {', '.join(reset_list)}[/]")
                             else:
                                 rprint("[yellow]No downstream tasks to reset.[/]")
+                            if Confirm.ask("Reset this task to 0%?", default=True):
+                                graph.update_task_progress(tid, 0.0, TaskStatus.PENDING.value)
+                                rprint(f"[green]Task reset to 0%. {tid} is now PENDING[/]")
                         else:
                             rprint("[yellow]Skipping reset. (Risk Score only displayed in red)[/]")
                     else:

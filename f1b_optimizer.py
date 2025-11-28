@@ -73,7 +73,7 @@ class Optimizer:
             report.append(f"Critical task: {backward_queue[0].name}. Rescheduling after critical task is completed...")
 
             for i, task in enumerate(backward_queue):
-                report.append(f"Task {i+1}: {task.name} - {task.team.value}")
+                report.append(f"Task {i+1}: {task.name} --> id: {task.id} - {task.team.value}")
                 report.append("Action: Perform the task...")
             report.append("")
 
@@ -86,8 +86,10 @@ class Optimizer:
             for i, task in enumerate(forward_queue):
                 prefix = f" {i+1}."
 
+                task_display = f"**{task.name}** --> id: {task.id}"
+
                 if has_critical_task:
-                    report.append(f"{prefix}[BLOCKED] **{task.name}**")
+                    report.append(f"{prefix}[BLOCKED] {task_display}")
                     report.append(f"{prefix}Action: Waiting for critical task to be completed...")
                     continue
 
@@ -99,18 +101,18 @@ class Optimizer:
                 scrap_risk = self.calculate_scrap_risk_score(task)
 
                 if scrap_risk > 80:  # high risk task - task should be ON HOLD
-                    report.append(f"{prefix}[HIGH RISK] **{task.name}** (Risk of being cancelled: {scrap_risk:.1f}%)")
+                    report.append(f"{prefix}[HIGH RISK] {task_display} (Risk of being cancelled: {scrap_risk:.1f}%)")
                     report.append(f"{prefix}Action: ON HOLD the task...")
                     continue
 
                 elif scrap_risk > 50:  # medium risk task - task should be performed TENTATIVELY
-                    report.append(f"{prefix}[MEDIUM RISK] **{task.name}** (Risk of being cancelled: {scrap_risk:.1f}%)")
+                    report.append(f"{prefix}[MEDIUM RISK] {task_display} (Risk of being cancelled: {scrap_risk:.1f}%)")
                     report.append(f"{prefix}Action: {tag}")
                     continue
                 else: 
                     # if scrap risk is low, check if the task is a micro-batch start
                     action_tag = "Micro-batch start" if is_micro_batch_start else "Normal start"
-                    report.append(f"{prefix}[LOW RISK] **{task.name}** (Risk of being cancelled: {scrap_risk:.1f}%)")
+                    report.append(f"{prefix}[LOW RISK] {task_display} (Risk of being cancelled: {scrap_risk:.1f}%)")
                     report.append(f"{prefix}Action: {tag}")
             report.append("")
 
@@ -118,7 +120,7 @@ class Optimizer:
         if infrastructure_queue:
             report.append("Infrastructure tasks detected... scheduling infrastructure tasks...")
             for i, task in enumerate(infrastructure_queue):
-                report.append(f"   {i+1}. **{task.name}**")
+                report.append(f"   {i+1}. {task.name} --> id: {task.id}")
                 report.append("   Action: Schedule the task...")
                 report.append("   Risk of being cancelled: 0.0% (Infrastructure tasks are not considered for risk analysis)")
             report.append("")
