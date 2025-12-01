@@ -28,9 +28,6 @@ class Optimizer:
         """
         risk_score = 0.0
 
-        # default = getattr(task, 'category', TaskCategory.CRITICAL)
-        # if default == TaskCategory.INFRASTRUCTURE:
-        #     return 0.0  
         task_category = task.category
         if task_category == TaskCategory.INFRASTRUCTURE:
             return 0.0
