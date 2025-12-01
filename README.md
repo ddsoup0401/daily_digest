@@ -1,99 +1,151 @@
 # daily_digest
 
-A Risk-First Workflow Orchestrator for Hardware Development
+### The 1F1B Scheduling Engine for Robotics
 
-This is an advanced scheduling engine designed to solve the "Hardware-Software Integration Hell." It adapts the 1F1B (One Forward, One Backward) pipeline parallelism technique—originally from Deep Learning infrastructure—to manage the high-volatility lifecycle of physical product development.
+This is a project management operating system designed for hardware/software co-development. It adapts the 1F1B (One Forward, One Backward) pipelining strategy from Deep Learning to manage engineering risk, prevent cascading failures, and maximize development velocity.
 
-### Problem Statement
+The Philosophy: Why 1F1B?
 
-In concurrent hardware/software engineering, naive linear workflow is too slow, but full concurrency is too risky. Development suffers from three systemic inefficiencies:
+Traditional project management (Waterfall/Agile) is inefficient in hardware development because it creates "physical debt" that software must validate.
 
-* The Cost of Batching: Hardware teams naturally prefer "Batching" (building Leg, Arm, and Head continuously) to optimize machine setup time. However, if the Leg has a flaw, the Arm and Head are built on invalid assumptions. This leads to Wasted Cost and time.
+Forward Pass (Hardware): Creates state. Every finished HW component is Risk Inventory (unvalidated debt).
 
-* Idle Time (Pipeline Bubbles): Software engineers sit idle waiting for 100% hardware completion, creating massive inefficiencies. Even if software engineers are working on things, their work is likely to be inefficient due to unstable specifications and failure to prioritize urgent tasks that other tasks are dependent on.
+Backward Pass (Software): Calculates gradients. Validating HW removes the risk and clears the inventory.
+
+VRAM Limit (Risk Budget): Just as a GPU runs out of memory, an engineering team runs out of capacity to handle unvalidated hardware. When this limit is reached, production must stop.
+
+## Key Features
+
+1. Risk Inventory Limiter (The Safety Valve)
+
+We define a MAX_RISK_INVENTORY (e.g., 2.5 units).
+
+Every time a HW task finishes (DONE), it enters WAITING_FOR_VALIDATION state, filling up the inventory.
+
+If Inventory > Limit: The system triggers a HARD STOP on all new Fabrication (Forward) tasks.
+
+To Resume: You must complete SW Validation (Backward) tasks to clear the inventory.
+
+2. Bottleneck-First Sorting (The Speed Engine)
+
+Unlike traditional tools that sort by date, PipeSync v2 sorts Forward tasks by Bottleneck Impact.
+
+Logic: sort(key= -downstream_block_count)
+
+Effect: The task blocking the most downstream people is always at the top, regardless of its individual risk. We prioritize Flow 
+
+3. Swarming/Supporting Mode (The Crisis Protocol)
+
+When the Risk Inventory is full, the HW team doesn't just sit idle.
+
+Trigger: Risk Inventory Saturated.
+
+Action: The system recommends Support Tasks for the Hardware team.
+
+Example: "SW-1 is stuck. HW Team, stop building Arm-2 and build a Test Jig for SW-1."
+
+This accelerates the Backward Pass, clearing risk faster.
+
+4. Concurrency & Micro-batching
+
+Milestones: SW doesn't wait for HW to be 100% DONE. If HW hits a "Interface Frozen" milestone, SW becomes Ready.
+
+Result: HW Fabrication and SW Baseline Development run concurrently, reducing pipeline bubbles.
+
+## The Logic Flow
+
+graph TD
+    A[Start Tick] --> B{Risk Inventory Full?}
+    
+    %% Normal Flow
+    B -- NO --> C[Check Backward Queue]
+    C --> D{SW Tasks Ready?}
+    D -- YES --> E[P1: Execute Backward (SW)]
+    D -- NO --> F[P3: Execute Forward (HW)]
+    F --> G[Sort by Bottleneck Impact]
+    
+    %% Crisis Flow
+    B -- YES (Crisis) --> H[Block Forward Pass]
+    H --> I[Find Critical SW Bottleneck]
+    I --> J[P2: Trigger Swarming/Support]
+    J --> K[Assign HW to Support SW]
 
 
-### Solution Architecture
+## Task States & Lifecycle
 
-PipeSync replaces static task lists with a dynamic, risk-adjusted priority queue. It employs a 3-Tiered Heuristic Loop to determine the optimal next action for every engineer.
+This introduces a strict lifecycle to ensure risk accounting:
 
-1. Priority Tier 1: The "Stop-the-Line" Check
+PENDING: Task created.
 
-Objective: Close the feedback loop immediately to prevent error propagation.
+IN_PROGRESS: Work started.
 
-2. Priority Tier 2: Risk-Adjusted Execution
+WAITING_FOR_VALIDATION (HW Only): HW is physically done, but SW hasn't signed off. Risk counts against inventory here.
 
-Objective: Maximize forward velocity without accumulating toxic risk.
+DONE (Risk Free):
 
-If the feedback loop is clear, the scheduler evaluates potential Forward tasks (Design/Fabrication) using a quantitative Scrap Risk Score.
+SW: Validation complete. Clears its own risk.
 
-### Scrap Risk Calculation
+HW: Only becomes DONE when ALL linked SW validators are DONE.
 
-Risk is propagated downstream. The risk for Task $T$ is the weighted sum of the volatility of its dependencies $D$.
+## Usage Guide
 
-$$\text{Risk}(T) = \sum_{d \in D} (\text{Volatility}_{d} \times \text{ImpactWeight}_{T,d})$$
+Initialization
 
-🚦 Decision Thresholds
+Set your organization's risk tolerance.
 
-Risk Score
+Set Max Risk Inventory (Risk Budget) (2.5): 2.0
 
-System Decision
 
-Rationale
+The Dashboard
 
-> 80%
+The UI is divided into actionable sections by priority:
 
-⛔ HOLD
+[P1: BACKWARD]: SW Team's priority. Clear these to free up the budget.
 
-Foundation is too unstable. Starting now guarantees wasted effort.
+[P2: SWARMING/SUPPORT]: Emergency tasks for HW team to help SW team.
 
-50 - 80%
+[P3: FORWARD]: HW Team's backlog. Sorted by impact.
 
-⚠️ TENTATIVE
+[Risk Inventory]: The health bar of your project.
 
-Proceed with caution. Flagged for management review.
+Commands
 
-< 50%
+add: Wizard to create tasks.
 
-:) START
+Smart Input: Asks "HW or SW team?" first.
 
-Safe execution path.
+Auto-Link: If SW, asks "Which HW are you validating?"
 
-### Micro-Batching Optimization
+Swarming: Automatically suggests Support tasks if the system is blocked.
 
-To eliminate idle time, this algorithm implements Virtual Micro-Batching.
+update: Update progress/status.
 
-Mechanism: Dependencies define specific Milestones (e.g., "Interface Frozen" at 40% completion).
+Toxic Inheritance: Warns if you try to start a high-risk task without clearing dependencies.
 
-Result: Downstream tasks trigger a Micro-batch Start the moment a milestone is crossed, converting serial blocking into parallel execution.
+The Loop: When you finish a Support task, it prompts you to finish the blocked SW task.
 
-3. Priority Tier 3: Idle Resource Utilization
+## Example Scenario (The Loop)
 
-Objective: Zero waste during pipeline starvation.
+Saturation: HW team builds Leg and Arm. Inventory hits 100%.
 
-When the Critical Path is blocked by high risk or mandatory feedback waits, the system detects Starvation. It automatically recommends Infrastructure tasks (Documentation, Test Automation, Refactoring).
+Block: System locks Head Fabrication.
 
-Scrap Risk: 0.0%
+Swarm: System suggests: Build Test Jig for Leg FW.
 
-Utility: Increases long-term velocity without risking wasted effort on volatile product features.
+Support: HW team builds the Jig (DONE).
 
-### Key Impact
+Accelerate: SW team uses the Jig, finishes Leg FW quickly (DONE).
 
-Minimizes Scrap: Mathematically prevents the team from committing resources to features dependent on volatile upstream components.
+Release: Leg HW becomes DONE. Inventory drops to 50%.
 
-Reduces Lead Time: Achieves up to 40% faster delivery by converting serial handoffs into parallel micro-batches.
+Resume: System unlocks Head Fabrication.
 
-Enforces Discipline: Replaces subjective decision-making with an algorithmic governance model based on proven GPU pipeline architecture.
+## Installation
 
-### Getting Started
+No external dependencies required other than rich and networkx
 
-To run the scheduler simulation:
+    %% pip install rich networkx pydantic
+    python test.py
 
-# Clone the repository
-git clone [https://github.com/yourusername/pipesync.git](https://github.com/yourusername/pipesync.git)
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the interactive CLI dashboard
-python scheduler_cli.py
+PipeSync v2 is not just a scheduler; it is a Risk Governance System that aligns engineering velocity with engineering integrity.
