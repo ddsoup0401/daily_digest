@@ -1,6 +1,6 @@
 from enum import Enum
-from typing import List
-from pydantic import BaseModel, Field
+from typing import List, Optional
+from pydantic import BaseModel, Field  # pyright: ignore[reportMissingImports]
 from datetime import datetime 
 
 class TeamType(str, Enum):
@@ -10,14 +10,16 @@ class TeamType(str, Enum):
 
 class TaskStatus(str, Enum):
     DONE = "done"
+    WAITING_FOR_VALIDATION = "waiting_for_validation" 
     IN_PROGRESS = "in_progress"
     PENDING = "pending"
     BLOCKED = "blocked"
 
 # Used for Risk Analysis. 
 class TaskCategory(str, Enum):
-    CRITICAL = "Critical" # tasks are labeled as critical if it leads to further complications, such as Leg CAD 
+    CRITICAL = "Critical" # normal forward / backward 
     INFRASTRUCTURE = "Infrastructure" # tasks are labeled as infrastructure if it isn't related to the main functionality of the project, such as test code writing and documentation. 
+    SUPPORT = "Support" # all others supporting major bottleneck  
 
 class ProjectStage(str, Enum):
     ARCHITECTURE = "1. Architecture" # setting up the initial architecture & interfaces
@@ -37,7 +39,6 @@ class Task(BaseModel):
     team: TeamType
     assigner: str
 
-    # microbatch variables (eg. 'leg', 'battery', 'imu', 'etc.')
     component_id: str
     stage: ProjectStage
     category: TaskCategory = TaskCategory.CRITICAL
@@ -58,6 +59,7 @@ class Task(BaseModel):
     
     # human factors - switching cost
     switch_cost: int = 0 # 0 = no penalty, 1 = low penalty, 2 = medium penalty, 3 = high penalty, 4 = very high penalty, 5 = extreme penalty
+    target_support_id: Optional[str] = None # if the task is a support task, the ID of the support task to be swarmed
 
     created_at: datetime = Field(default_factory=datetime.now, description="Timestamp when the task was created")
     updated_at: datetime = Field(default_factory=datetime.now, description="Timestamp when the task was last updated")
